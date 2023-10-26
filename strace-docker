@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# This script runs strace on any newly-started Docker container
+#
+# Written by Amr S. Abed <AmrAbed@vt.edu>
+#
+# Last updated June 8, 2015
+
+cd "$(dirname "$0")"
+
+WORKDIR=/var/log/strace-docker
+
+[ ! -d $WORKDIR ] && mkdir $WORKDIR
+
+cd $WORKDIR && touch log
+
+docker events -f event=start >> log &
+
+while inotifywait -qq -e modify log; do
+  new_line=$(tail -1 log)
+  timestamp=$(echo $new_line | gawk '{tmp=substr($1, 0, 19)}{gsub(/:|-|T/,"",tmp)}{print tmp}')
+  id=$(echo $new_line | gawk '{print substr($4, 0, 12)}')
+  image=$(echo $new_line | gawk '{match($0, "image=([a-z/]+)", a)}{gsub(/\//, "_", a[1])}{print a[1]}')
+  out_file=$id-$image-$timestamp
+  sysdig -p"%thread.tid %evt.type" container.id=$id and evt.type!=switch > $out_file &
+done
